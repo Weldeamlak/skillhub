@@ -77,14 +77,22 @@ export const deleteLessonService = async (id) => {
 // ✅ Create a new course
 export const createCourseService = async (courseData, user) => {
   try {
+    if (!courseData) throw new Error("Course data is required");
+
     const { title, description, price, category } = courseData;
+
+    if (!title || !description || price === undefined || !category) {
+      throw new Error(
+        "Missing required course fields: title, description, price, category"
+      );
+    }
 
     const newCourse = new Course({
       title,
       description,
       price,
       category,
-      createdBy: user._id,
+      instructor: user && user._id,
     });
 
     const savedCourse = await newCourse.save();
@@ -100,7 +108,7 @@ export const createCourseService = async (courseData, user) => {
 export const getCoursesService = async () => {
   try {
     return await Course.find()
-      .populate("createdBy", "name email role")
+      .populate("instructor", "name email role")
       .populate("lessons");
   } catch (error) {
     logError(`Error fetching courses: ${error.message}`);
@@ -112,7 +120,7 @@ export const getCoursesService = async () => {
 export const getCourseByIdService = async (id) => {
   try {
     const course = await Course.findById(id)
-      .populate("createdBy", "name email role")
+      .populate("instructor", "name email role")
       .populate("lessons");
     if (!course) throw new Error("Course not found");
     return course;
@@ -128,9 +136,9 @@ export const updateCourseService = async (id, updateData, user) => {
     const course = await Course.findById(id);
     if (!course) throw new Error("Course not found");
 
-    // Only creator or admin can update
+    // Only instructor (creator) or admin can update
     if (
-      course.createdBy.toString() !== user._id.toString() &&
+      course.instructor.toString() !== user._id.toString() &&
       user.role !== "admin"
     ) {
       throw new Error("Not authorized to update this course");

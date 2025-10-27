@@ -13,6 +13,17 @@ const paymentSchema = new mongoose.Schema(
       default: "pending",
     },
     splitAmount: { type: Number, default: 0 },
+    platformShare: { type: Number, default: 0 },
+    instructorShare: { type: Number, default: 0 },
+    gatewayFeeEstimate: { type: Number, default: 0 },
+    payoutCredited: { type: Boolean, default: false },
+    payoutStatus: {
+      type: String,
+      enum: ["pending", "paid"],
+      default: "pending",
+    },
+    payoutPaidAt: { type: Date },
+    payoutTxRef: { type: String },
   },
   { timestamps: true }
 );
