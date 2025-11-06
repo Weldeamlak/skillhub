@@ -33,10 +33,33 @@ export const createEnrollmentService = async (enrollmentData, user) => {
   }
 };
 
-export const getAllEnrollmentsService = async () => {
-  return await Enrollment.find()
+export const getAllEnrollmentsService = async ({
+  filter = {},
+  options = null,
+} = {}) => {
+  if (!options)
+    return await Enrollment.find(filter)
+      .populate("student", "username email")
+      .populate("course", "title");
+
+  const total = await Enrollment.countDocuments(filter);
+  const items = await Enrollment.find(filter)
     .populate("student", "username email")
-    .populate("course", "title");
+    .populate("course", "title")
+    .sort(options.sort || undefined)
+    .skip(options.skip)
+    .limit(options.limit)
+    .select(options.select || undefined);
+
+  return {
+    items,
+    pagination: {
+      total,
+      page: options.page,
+      limit: options.limit,
+      pages: Math.ceil(total / options.limit),
+    },
+  };
 };
 
 export const getEnrollmentsByUserService = async (userId) => {

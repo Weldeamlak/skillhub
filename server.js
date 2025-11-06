@@ -41,15 +41,15 @@ app.use((req, res, next) => {
 // Connect MongoDB
 connectDB();
 
-// Routes — API base path
-app.use("/api/users", userRoutes);
-app.use("/api/auth", authRoutes);
-app.use("/api/courses", courseRoutes);
-app.use("/api/lessons", lessonRoutes);
-app.use("/api/enrollments", enrollementRoutes);
-app.use("/api/payments", paymentRoutes);
-app.use("/api/reviews", reviewRoutes);
-app.use("/api/promotions", promotionRoutes);
+// Routes — API base path (versioned)
+app.use("/api/v1/users", userRoutes);
+app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/courses", courseRoutes);
+app.use("/api/v1/lessons", lessonRoutes);
+app.use("/api/v1/enrollments", enrollementRoutes);
+app.use("/api/v1/payments", paymentRoutes);
+app.use("/api/v1/reviews", reviewRoutes);
+app.use("/api/v1/promotions", promotionRoutes);
 
 // Test route
 app.get("/", (req, res) => {

@@ -43,33 +43,53 @@ export const createReviewService = async (reviewData, user) => {
   }
 };
 
-export const getAllReviewsService = async () => {
-  return await Review.find()
+export const getAllReviewsService = async ({
+  filter = {},
+  options = null,
+} = {}) => {
+  const base = Review.find(filter)
     .populate("student", "username email")
     .populate("course", "title");
-};
+  if (!options) return await base.exec();
 
-export const getReviewsByCourseService = async (
-  courseId,
-  { page = 1, limit = 10 } = {}
-) => {
-  const skip = (page - 1) * limit;
-  const [items, total] = await Promise.all([
-    Review.find({ course: courseId })
-      .populate("student", "username")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit),
-    Review.countDocuments({ course: courseId }),
-  ]);
-
+  const total = await Review.countDocuments(filter);
+  const items = await base
+    .sort(options.sort || { createdAt: -1 })
+    .skip(options.skip)
+    .limit(options.limit)
+    .select(options.select || undefined);
   return {
     items,
     pagination: {
       total,
-      page: Number(page),
-      limit: Number(limit),
-      pages: Math.ceil(total / limit),
+      page: options.page,
+      limit: options.limit,
+      pages: Math.ceil(total / options.limit),
+    },
+  };
+};
+
+export const getReviewsByCourseService = async (
+  courseId,
+  { filter = {}, options = null } = {}
+) => {
+  filter = { ...(filter || {}), course: courseId };
+  const base = Review.find(filter).populate("student", "username");
+  if (!options) return await base.sort({ createdAt: -1 }).exec();
+
+  const total = await Review.countDocuments(filter);
+  const items = await base
+    .sort(options.sort || { createdAt: -1 })
+    .skip(options.skip)
+    .limit(options.limit)
+    .select(options.select || undefined);
+  return {
+    items,
+    pagination: {
+      total,
+      page: options.page,
+      limit: options.limit,
+      pages: Math.ceil(total / options.limit),
     },
   };
 };

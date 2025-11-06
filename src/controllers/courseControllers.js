@@ -6,6 +6,7 @@ import {
   updateCourseService,
   deleteCourseService,
 } from "../services/courseService.js";
+import { buildQueryOptions } from "../utils/queryHelper.js";
 import { logInfo, logError } from "../logs/logger.js";
 
 export const createCourse = async (req, res) => {
@@ -21,8 +22,14 @@ export const createCourse = async (req, res) => {
 
 export const getCourses = async (req, res) => {
   try {
-    const courses = await getCoursesService();
-    res.status(200).json(courses);
+    const { filter, options } = buildQueryOptions(req.query, [
+      "category",
+      "price",
+      "instructor",
+      "title",
+    ]);
+    const result = await getCoursesService({ filter, options });
+    res.status(200).json(result);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

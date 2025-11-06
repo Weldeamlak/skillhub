@@ -30,27 +30,36 @@ export const createPromotionService = async (data) => {
 };
 
 export const getPromotionsService = async ({
-  page = 1,
-  limit = 10,
-  active,
+  filter = {},
+  options = null,
 } = {}) => {
-  const skip = (page - 1) * limit;
-  const filter = {};
-  if (active !== undefined)
-    filter.isActive = active === "true" || active === true;
+  if (!options) {
+    const items = await Promotion.find(filter).sort({ createdAt: -1 });
+    return {
+      items,
+      pagination: {
+        total: items.length,
+        page: 1,
+        limit: items.length,
+        pages: 1,
+      },
+    };
+  }
 
-  const [items, total] = await Promise.all([
-    Promotion.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
-    Promotion.countDocuments(filter),
-  ]);
+  const total = await Promotion.countDocuments(filter);
+  const items = await Promotion.find(filter)
+    .sort(options.sort || { createdAt: -1 })
+    .skip(options.skip)
+    .limit(options.limit)
+    .select(options.select || undefined);
 
   return {
     items,
     pagination: {
       total,
-      page: Number(page),
-      limit: Number(limit),
-      pages: Math.ceil(total / limit),
+      page: options.page,
+      limit: options.limit,
+      pages: Math.ceil(total / options.limit),
     },
   };
 };

@@ -6,6 +6,7 @@ import {
   deleteLessonService,
 } from "../services/lessonService.js";
 import { logInfo, logError } from "../logs/logger.js";
+import { buildQueryOptions } from "../utils/queryHelper.js";
 
 // ✅ Create a new lesson
 export const createLessonController = async (req, res) => {
@@ -22,8 +23,12 @@ export const createLessonController = async (req, res) => {
 // ✅ Get all lessons
 export const getAllLessons = async (req, res) => {
   try {
-    const lessons = await getAllLessonsService();
-    res.status(200).json(lessons);
+    const { filter, options } = buildQueryOptions(req.query, [
+      "course",
+      "title",
+    ]);
+    const result = await getAllLessonsService({ filter, options });
+    res.status(200).json(result);
   } catch (error) {
     logError(`Error fetching lessons: ${error.message}`);
     res.status(500).json({ message: error.message });

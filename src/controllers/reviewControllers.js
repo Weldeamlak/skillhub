@@ -8,6 +8,7 @@ import {
 } from "../services/reviewService.js";
 import { validationResult } from "express-validator";
 import { logInfo, logError } from "../logs/logger.js";
+import { buildQueryOptions } from "../utils/queryHelper.js";
 
 export const createReview = async (req, res) => {
   const errors = validationResult(req);
@@ -30,8 +31,12 @@ export const createReview = async (req, res) => {
 
 export const getAllReviews = async (req, res) => {
   try {
-    const reviews = await getAllReviewsService();
-    res.status(200).json(reviews);
+    const { filter, options } = buildQueryOptions(req.query, [
+      "student",
+      "course",
+    ]);
+    const result = await getAllReviewsService({ filter, options });
+    res.status(200).json(result);
   } catch (error) {
     logError(error.message);
     res.status(500).json({ message: error.message });
@@ -40,11 +45,12 @@ export const getAllReviews = async (req, res) => {
 
 export const getReviewsByCourse = async (req, res) => {
   try {
-    const page = req.query.page || 1;
-    const limit = req.query.limit || 10;
+    const { filter, options } = buildQueryOptions(req.query, ["student"]);
+    // ensure we're filtering by course
+    filter.course = req.params.courseId;
     const result = await getReviewsByCourseService(req.params.courseId, {
-      page,
-      limit,
+      filter,
+      options,
     });
     res.status(200).json(result);
   } catch (error) {

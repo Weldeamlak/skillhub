@@ -8,6 +8,7 @@ import {
 } from "../services/enrollementService.js";
 import { validationResult } from "express-validator";
 import { logInfo, logError } from "../logs/logger.js";
+import { buildQueryOptions } from "../utils/queryHelper.js";
 
 export const createEnrollment = async (req, res) => {
   const errors = validationResult(req);
@@ -26,8 +27,12 @@ export const createEnrollment = async (req, res) => {
 
 export const getAllEnrollments = async (req, res) => {
   try {
-    const enrollments = await getAllEnrollmentsService();
-    res.status(200).json(enrollments);
+    const { filter, options } = buildQueryOptions(req.query, [
+      "student",
+      "course",
+    ]);
+    const result = await getAllEnrollmentsService({ filter, options });
+    res.status(200).json(result);
   } catch (error) {
     logError(error.message);
     res.status(500).json({ message: error.message });

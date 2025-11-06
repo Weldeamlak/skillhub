@@ -18,12 +18,34 @@ export const createUserService = async ({
   return user;
 };
 
-export const getAllUsersService = async () => {
-  const users = await User.find().select("-password");
-  if (!users || users.length === 0) {
-    throw new Error("No users found");
+export const getAllUsersService = async ({
+  filter = {},
+  options = null,
+} = {}) => {
+  // If no options provided, return full list (legacy behavior)
+  if (!options) {
+    const users = await User.find(filter).select("-password");
+    if (!users || users.length === 0) throw new Error("No users found");
+    return users;
   }
-  return users;
+
+  const total = await User.countDocuments(filter);
+  const users = await User.find(filter)
+    .select("-password")
+    .sort(options.sort || undefined)
+    .skip(options.skip)
+    .limit(options.limit)
+    .select(options.select || undefined);
+
+  return {
+    items: users,
+    pagination: {
+      total,
+      page: options.page,
+      limit: options.limit,
+      pages: Math.ceil(total / options.limit),
+    },
+  };
 };
 
 export const getUserByIdService = async (id) => {

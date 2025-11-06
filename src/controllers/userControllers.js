@@ -7,6 +7,7 @@ import {
 } from "../services/userService.js";
 import { logInfo, logError } from "../logs/logger.js";
 import { validationResult } from "express-validator";
+import { buildQueryOptions } from "../utils/queryHelper.js";
 
 export const createUser = async (req, res) => {
   const errors = validationResult(req);
@@ -26,11 +27,16 @@ export const createUser = async (req, res) => {
 
 export const getAllUsers = async (req, res) => {
   try {
-    const users = await getAllUsersService();
-    if (!users || users.length === 0) {
+    const { filter, options } = buildQueryOptions(req.query, [
+      "role",
+      "email",
+      "username",
+    ]);
+    const result = await getAllUsersService({ filter, options });
+    if (!result || (Array.isArray(result) && result.length === 0)) {
       return res.status(404).json({ message: "No users found" });
     }
-    res.status(200).json(users);
+    res.status(200).json(result);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

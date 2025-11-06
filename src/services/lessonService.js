@@ -34,8 +34,28 @@ export const createLesson = async (lessonData) => {
 };
 
 // ✅ Get all lessons
-export const getAllLessonsService = async () => {
-  return await Lesson.find().populate("course", "title");
+export const getAllLessonsService = async ({
+  filter = {},
+  options = null,
+} = {}) => {
+  const query = Lesson.find(filter).populate("course", "title");
+  if (!options) return await query.exec();
+
+  const total = await Lesson.countDocuments(filter);
+  const docs = await query
+    .sort(options.sort)
+    .skip(options.skip)
+    .limit(options.limit)
+    .select(options.select)
+    .exec();
+
+  return {
+    total,
+    page: options.page,
+    limit: options.limit,
+    totalPages: Math.ceil(total / options.limit || 1),
+    data: docs,
+  };
 };
 
 // ✅ Get one lesson

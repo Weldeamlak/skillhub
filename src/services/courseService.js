@@ -105,11 +105,32 @@ export const createCourseService = async (courseData, user) => {
 };
 
 // ✅ Get all courses
-export const getCoursesService = async () => {
+export const getCoursesService = async ({
+  filter = {},
+  options = null,
+} = {}) => {
   try {
-    return await Course.find()
+    const query = Course.find(filter)
       .populate("instructor", "name email role")
       .populate("lessons");
+
+    if (!options) return await query.exec();
+
+    const total = await Course.countDocuments(filter);
+    const docs = await query
+      .sort(options.sort)
+      .skip(options.skip)
+      .limit(options.limit)
+      .select(options.select)
+      .exec();
+
+    return {
+      total,
+      page: options.page,
+      limit: options.limit,
+      totalPages: Math.ceil(total / options.limit || 1),
+      data: docs,
+    };
   } catch (error) {
     logError(`Error fetching courses: ${error.message}`);
     throw error;

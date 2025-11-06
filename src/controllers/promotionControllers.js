@@ -5,6 +5,7 @@ import {
   updatePromotionService,
   deletePromotionService,
 } from "../services/promotionService.js";
+import { buildQueryOptions } from "../utils/queryHelper.js";
 import { validationResult } from "express-validator";
 import { logInfo, logError } from "../logs/logger.js";
 
@@ -25,10 +26,19 @@ export const createPromotion = async (req, res) => {
 
 export const getPromotions = async (req, res) => {
   try {
-    const page = req.query.page || 1;
-    const limit = req.query.limit || 10;
-    const active = req.query.active;
-    const result = await getPromotionsService({ page, limit, active });
+    const { filter, options } = buildQueryOptions(req.query, [
+      "code",
+      "isActive",
+      "validFrom",
+      "validTo",
+    ]);
+    // map legacy 'active' param to isActive
+    if (req.query.active !== undefined) {
+      filter.isActive =
+        req.query.active === "true" || req.query.active === true;
+    }
+
+    const result = await getPromotionsService({ filter, options });
     res.status(200).json(result);
   } catch (error) {
     logError(error.message);
