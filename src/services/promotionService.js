@@ -88,3 +88,30 @@ export const deletePromotionService = async (id) => {
   logInfo(`Promotion deleted: ${promo.code}`);
   return true;
 };
+
+export const validatePromoCodeService = async (code, courseId) => {
+  const promo = await Promotion.findOne({
+    code: code.trim().toUpperCase(),
+    isActive: true,
+  });
+
+  if (!promo) {
+    throw new Error("Invalid or inactive promotion code");
+  }
+
+  const now = new Date();
+  if (now < promo.validFrom || now > promo.validTo) {
+    throw new Error("Promotion code has expired or is not yet valid");
+  }
+
+  if (
+    promo.applicableCourses &&
+    promo.applicableCourses.length > 0 &&
+    courseId &&
+    !promo.applicableCourses.some((id) => id.toString() === courseId.toString())
+  ) {
+    throw new Error("Promotion code is not applicable to this course");
+  }
+
+  return promo;
+};

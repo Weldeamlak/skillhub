@@ -1,11 +1,12 @@
 import Course from "../model/Course.js";
 import Lesson from "../model/Lesson.js";
 import { logInfo, logError } from "../logs/logger.js";
+import { getSignedUrl, uploadToCloud } from "./storageService.js";
 
 // ✅ Create a new lesson
 export const createLesson = async (lessonData) => {
   try {
-    const { title, course, videoUrl, pdfUrl, content, quiz } = lessonData;
+    const { title, course, video, pdf, content, quiz, order } = lessonData;
 
     const existingCourse = await Course.findById(course);
     if (!existingCourse) {
@@ -15,8 +16,9 @@ export const createLesson = async (lessonData) => {
     const newLesson = new Lesson({
       title,
       course,
-      videoUrl,
-      pdfUrl,
+      order,
+      video,
+      pdf,
       content,
       quiz,
     });
@@ -33,12 +35,18 @@ export const createLesson = async (lessonData) => {
   }
 };
 
-// ✅ Get all lessons
+// ✅ Get all lessons — refined for weighted search (Phase 5)
 export const getAllLessonsService = async ({
   filter = {},
   options = null,
 } = {}) => {
   const query = Lesson.find(filter).populate("course", "title");
+  
+  // If text searching, MongoDB adds 'score' which isn't in schema, so we must project it
+  if (filter.$text) {
+     query.select({ score: { $meta: "textScore" } });
+  }
+
   if (!options) return await query.exec();
 
   const total = await Lesson.countDocuments(filter);
@@ -53,14 +61,30 @@ export const getAllLessonsService = async ({
     total,
     page: options.page,
     limit: options.limit,
-    totalPages: Math.ceil(total / options.limit || 1),
+    totalPages: Math.ceil(total / (options.limit || 1)),
     data: docs,
   };
 };
 
-// ✅ Get one lesson
-export const getLessonByIdService = async (id) => {
-  return await Lesson.findById(id).populate("course", "title");
+// ✅ Get one lesson with SECURE, SIGNED URLs
+export const getLessonByIdService = async (id, user = null) => {
+  const lesson = await Lesson.findById(id).populate("course", "title instructor");
+  if (!lesson) throw new Error("Lesson not found");
+
+  const lessonObj = lesson.toObject();
+
+  // If user is provided, generate signed URLs
+  // In a real platform, we only sign if the student is enrolled and unlocked (middleware handles this)
+  if (user) {
+    if (lesson.video?.publicId) {
+       lessonObj.video.signedUrl = getSignedUrl(lesson.video.publicId, 'video');
+    }
+    if (lesson.pdf?.publicId) {
+       lessonObj.pdf.signedUrl = getSignedUrl(lesson.pdf.publicId, 'image'); // image resource type for pdf in cloudinary if not using 'raw'
+    }
+  }
+
+  return lessonObj;
 };
 
 // ✅ Update lesson
@@ -92,4 +116,36 @@ export const deleteLessonService = async (id) => {
 
   logInfo(`Lesson deleted: ${lesson.title}`);
   return true;
+};
+
+// ✅ Upload lesson video
+export const uploadLessonVideoService = async (id, file, user) => {
+  try {
+    const lesson = await Lesson.findById(id).populate("course");
+    if (!lesson) throw new Error("Lesson not found");
+    
+    // Authorization check
+    if (lesson.course.instructor.toString() !== user._id.toString() && user.role !== "admin") {
+      throw new Error("Not authorized to upload video to this lesson");
+    }
+
+    if (!file) throw new Error("No file provided");
+
+    // Upload to our Cloudinary folder for lessons, as resource_type 'video'
+    const result = await uploadToCloud(file.buffer, "skillhub/lessons/videos", "video");
+
+    lesson.video = {
+      publicId: result.public_id,
+      provider: "cloudinary",
+      duration: result.duration || 0,
+    };
+    
+    await lesson.save();
+
+    logInfo(`Lesson video uploaded: ${lesson.title}`);
+    return lesson;
+  } catch (error) {
+    logError(`Error uploading lesson video: ${error.message}`);
+    throw error;
+  }
 };

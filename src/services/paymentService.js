@@ -1,12 +1,14 @@
 import Payment from "../model/Payment.js";
 import Course from "../model/Course.js";
-import Enrollment from "../model/Enrollement.js";
+import Enrollment from "../model/Enrollment.js";
 import mongoose from "mongoose";
 import { logInfo, logError } from "../logs/logger.js";
+import { validatePromoCodeService } from "./promotionService.js"; // ✅ Fix #18: Added promo validation
+import env from "../config/env.js";
 
-const CHAPA_BASE = process.env.CHAPA_BASE_URL || "https://api.chapa.co";
-const CHAPA_SECRET = process.env.CHAPA_SECRET_KEY;
-const CHAPA_PUBLIC = process.env.CHAPA_PUBLIC_KEY;
+const CHAPA_BASE = env.CHAPA_BASE_URL || "https://api.chapa.co";
+const CHAPA_SECRET = env.CHAPA_SECRET_KEY;
+const CHAPA_PUBLIC = env.CHAPA_PUBLIC_KEY;
 
 export const createPaymentService = async (paymentData, user) => {
   try {
@@ -45,17 +47,30 @@ export const initiateChapaTransaction = async (
   callbackUrl
 ) => {
   try {
-    const { course, amount, type } = paymentData;
+    let { course, amount, type, promoCode } = paymentData;
 
     if (course) {
       const existingCourse = await Course.findById(course);
       if (!existingCourse) throw new Error("Course not found");
+
+      // ✅ Fix #18: Apply promo code if provided
+      if (promoCode) {
+        const promo = await validatePromoCodeService(promoCode, course);
+        
+        if (promo.discountType === "percentage") {
+          amount = amount * (1 - promo.discountValue / 100);
+        } else {
+          amount = Math.max(0, amount - promo.discountValue);
+        }
+        
+        logInfo(`Applied promo ${promo.code} to course ${course}. New amount: ${amount}`);
+      }
     }
 
     // generate tx_ref if not provided
     const tx_ref = `chapa_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
 
-    // create pending payment record
+    // create pending payment record with adjusted amount
     const newPayment = new Payment({
       user: user._id,
       course,
@@ -64,6 +79,7 @@ export const initiateChapaTransaction = async (
       type,
       status: "pending",
     });
+
     const saved = await newPayment.save();
 
     if (!CHAPA_SECRET) throw new Error("Chapa secret key not configured");
@@ -161,11 +177,7 @@ export const verifyChapaTransaction = async (tx_ref) => {
                 [{ course: paymentDoc.course, student: paymentDoc.user }],
                 { session }
               );
-              await Course.findByIdAndUpdate(
-                paymentDoc.course,
-                { $addToSet: { students: paymentDoc.user } },
-                { session }
-              );
+              // ✅ Fix #17: Removed $addToSet Course.students — field no longer exists on Course schema
             }
 
             // credit instructor earnings only once
@@ -207,10 +219,33 @@ export const verifyChapaTransaction = async (tx_ref) => {
   }
 };
 
-export const getAllPaymentsService = async () => {
-  return await Payment.find()
+// ✅ Fix #16: Paginated — was an unbounded Query.find() that could OOM on large datasets
+export const getAllPaymentsService = async ({
+  filter = {},
+  options = null,
+} = {}) => {
+  const base = Payment.find(filter)
     .populate("user", "username email")
     .populate("course", "title");
+
+  if (!options) return await base.exec();
+
+  const total = await Payment.countDocuments(filter);
+  const items = await base
+    .sort(options.sort || { createdAt: -1 })
+    .skip(options.skip)
+    .limit(options.limit)
+    .select(options.select || undefined);
+
+  return {
+    items,
+    pagination: {
+      total,
+      page: options.page,
+      limit: options.limit,
+      pages: Math.ceil(total / options.limit),
+    },
+  };
 };
 
 export const getPaymentsByUserService = async (userId) => {

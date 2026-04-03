@@ -11,11 +11,12 @@ export const createUserService = async ({
   const existing = await User.findOne({ email });
   if (existing) throw new Error("User already exists");
 
-  const hashedPassword = await bcrypt.hash(password, 10);
-  const user = new User({ username, email, password: hashedPassword, role });
+  // ✅ Do NOT hash here — the User pre-save hook handles hashing automatically.
+  const user = new User({ username, email, password, role });
   await user.save();
 
-  return user;
+  const { password: _pw, ...safeUser } = user.toObject();
+  return safeUser;
 };
 
 export const getAllUsersService = async ({
@@ -30,12 +31,15 @@ export const getAllUsersService = async ({
   }
 
   const total = await User.countDocuments(filter);
+  // ✅ Fix #25: Only one .select() call — build field selection properly
+  const selectFields = options.select
+    ? `-password ${options.select}`
+    : "-password";
   const users = await User.find(filter)
-    .select("-password")
+    .select(selectFields)
     .sort(options.sort || undefined)
     .skip(options.skip)
-    .limit(options.limit)
-    .select(options.select || undefined);
+    .limit(options.limit);
 
   return {
     items: users,
@@ -70,11 +74,14 @@ export const updateUserService = async (id, updateData, currentUser) => {
   Object.assign(user, updateData);
 
   if (updateData.password) {
-    user.password = await bcrypt.hash(updateData.password, 10);
+    // Pre-save hook will re-hash; set plain text and let hook run
+    user.password = updateData.password;
   }
 
   await user.save();
-  return user;
+  // ✅ Don't leak the password hash
+  const { password: _pw, ...safeUser } = user.toObject();
+  return safeUser;
 };
 
 export const deleteUserService = async (id) => {

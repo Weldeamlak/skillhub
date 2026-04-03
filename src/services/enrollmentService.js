@@ -1,6 +1,8 @@
-import Enrollment from "../model/Enrollement.js";
+import Enrollment from "../model/Enrollment.js";
 import Course from "../model/Course.js";
 import { logInfo, logError } from "../logs/logger.js";
+import { initializeCourseProgress } from "./progressService.js";
+import { addEmailJob } from "../config/queue.js";
 
 export const createEnrollmentService = async (enrollmentData, user) => {
   try {
@@ -18,14 +20,18 @@ export const createEnrollmentService = async (enrollmentData, user) => {
     });
 
     const saved = await newEnrollment.save();
+    
+    // Initialize progression records for the new student
+    await initializeCourseProgress(user._id, course);
 
-    // add student to course.students if not already present
-    if (!existingCourse.students?.includes(user._id)) {
-      existingCourse.students.push(user._id);
-      await existingCourse.save();
-    }
+    // Trigger welcome email (background task)
+    await addEmailJob('welcome', {
+      to: user.email,
+      username: user.username,
+      courseTitle: existingCourse.title,
+    });
 
-    logInfo(`Enrollment created: ${saved._id}`);
+    logInfo(`Enrollment & Progress created: ${saved._id}`);
     return saved;
   } catch (error) {
     logError(`Error creating enrollment: ${error.message}`);
@@ -109,10 +115,7 @@ export const deleteEnrollmentService = async (id, user) => {
     throw new Error("Not authorized to delete this enrollment");
   }
 
-  // remove student from course.students
-  await Course.findByIdAndUpdate(enrol.course, {
-    $pull: { students: enrol.student },
-  });
+  // ✅ Fix #17: No longer pull from Course.students[] (field removed)
   await enrol.deleteOne();
 
   logInfo(`Enrollment deleted: ${id}`);

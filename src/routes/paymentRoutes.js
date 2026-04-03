@@ -12,6 +12,7 @@ import {
   markPaymentPaid,
 } from "../controllers/paymentControllers.js";
 import { protect, authorizeRoles } from "../middleware/authMiddleware.js";
+import { verifyChapaSignature } from "../middleware/chapaWebhookMiddleware.js"; // ✅ Security: Chapa HMAC
 
 const router = express.Router();
 
@@ -21,8 +22,8 @@ router.post("/", protect, createPayment);
 // Initialize chapa (returns checkout url)
 router.post("/chapa/init", protect, initChapa);
 
-// Chapa verify/webhook (public endpoint - Chapa can call or you can verify manually)
-router.post("/chapa/verify", chapaVerify);
+// ✅ Security fix: Chapa webhook — verify HMAC signature before processing
+router.post("/chapa/verify", verifyChapaSignature, chapaVerify);
 
 // Admin - list unpaid payouts
 router.get(
@@ -43,7 +44,7 @@ router.post(
 // Get current user's payments
 router.get("/me", protect, getMyPayments);
 
-// Admin - get all payments
+// Admin - get all payments (now paginated)
 router.get("/", protect, authorizeRoles("admin"), getAllPayments);
 
 // Get single payment
@@ -56,3 +57,4 @@ router.put("/:id", protect, updatePayment);
 router.delete("/:id", protect, deletePayment);
 
 export default router;
+

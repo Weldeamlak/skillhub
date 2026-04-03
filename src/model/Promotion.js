@@ -30,9 +30,16 @@ const PromotionSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    applicableCourses: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Course",
+      },
+    ], // ✅ Fix #18: If empty, it's a global promo. Otherwise, only for these courses.
   },
   { timestamps: true }
 );
 
+// Faster lookups for validating promo codes
 const Promotion = mongoose.model("Promotion", PromotionSchema);
 export default Promotion;

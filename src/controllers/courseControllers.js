@@ -5,6 +5,7 @@ import {
   getCourseByIdService,
   updateCourseService,
   deleteCourseService,
+  uploadCourseThumbnailService,
 } from "../services/courseService.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
 import { logInfo, logError } from "../logs/logger.js";
@@ -59,5 +60,14 @@ export const deleteCourse = async (req, res) => {
     res.status(200).json({ message: "Course deleted successfully", course });
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+};
+
+export const uploadCourseThumbnail = async (req, res) => {
+  try {
+    const course = await uploadCourseThumbnailService(req.params.id, req.file, req.user);
+    res.status(200).json({ message: "Thumbnail uploaded successfully", course });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
   }
 };

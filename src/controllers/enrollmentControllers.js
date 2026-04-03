@@ -5,7 +5,7 @@ import {
   getEnrollmentByIdService,
   updateEnrollmentService,
   deleteEnrollmentService,
-} from "../services/enrollementService.js";
+} from "../services/enrollmentService.js";
 import { validationResult } from "express-validator";
 import { logInfo, logError } from "../logs/logger.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";

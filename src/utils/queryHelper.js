@@ -47,7 +47,11 @@ export function buildQueryOptions(query = {}, allowedFilters = []) {
   // simple full text search if q provided (requires text index in model)
   if (query.q) {
     filter.$text = { $search: query.q };
+    // If searching, we often want to sort by relevance score by default
+    if (!sort) {
+      options.sort = { score: { $meta: "textScore" } };
+    }
   }
 
-  return { filter, options: { page, limit, skip, sort, select } };
+  return { filter, options: { ...options, page, limit, skip, select } };
 }

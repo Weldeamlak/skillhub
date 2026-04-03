@@ -1,24 +1,28 @@
 import { RateLimiterRedis, RateLimiterMemory } from "rate-limiter-flexible";
 import redisClient from "../config/redis.js";
 import jwt from "jsonwebtoken";
+import env from "../config/env.js";
 
 // small contract:
 // - inputs: Express req
 // - outputs: either next() or 429 response with Retry-After header
 
 // Read defaults from env
-const DEFAULT_POINTS = Number(process.env.RATE_LIMIT_POINTS) || 100;
-const DEFAULT_DURATION = Number(process.env.RATE_LIMIT_DURATION) || 60; // seconds
+const DEFAULT_POINTS = env.RATE_LIMIT_POINTS || 100;
+const DEFAULT_DURATION = env.RATE_LIMIT_DURATION || 60; // seconds
+
+// ✅ Fix #2: Define USER_KEY_STRATEGY from env (was used but never declared → ReferenceError)
+const USER_KEY_STRATEGY = env.RATE_LIMIT_USER_KEY_STRATEGY || "auth-only";
 
 // Comma-separated list of path prefixes to exempt entirely (no rate limiting)
-const EXEMPT_PATHS = (process.env.RATE_LIMIT_EXEMPT || "")
+const EXEMPT_PATHS = (env.RATE_LIMIT_EXEMPT || "")
   .split(",")
   .map((p) => p.trim())
   .filter(Boolean);
 
 // Per-route custom limits (env format): multiple entries separated by `;` where each is path:points/duration
 // Example: /api/auth/login:10/60;/api/auth/register:5/60
-const rawCustom = process.env.RATE_LIMIT_ROUTES || "";
+const rawCustom = env.RATE_LIMIT_ROUTES || "";
 const customRouteDefs = rawCustom
   .split(";")
   .map((s) => s.trim())
@@ -36,7 +40,7 @@ for (const def of customRouteDefs) {
 
 // Role-based quotas (env): semicolon separated role:points/duration or role:unlimited
 // Example: free:50/60;pro:1000/60;admin:unlimited
-const rawRoleQuotas = process.env.RATE_LIMIT_ROLE_QUOTAS || "";
+const rawRoleQuotas = env.RATE_LIMIT_ROLE_QUOTAS || "";
 const roleQuotaDefs = rawRoleQuotas
   .split(";")
   .map((s) => s.trim())
@@ -132,6 +136,48 @@ export default function rateLimitMiddleware(req, res, next) {
     }
   }
 
+  // ✅ Fix #1: Derive `role` BEFORE it's used below (was declared at line 195 but read at line 136 → ReferenceError)
+  const getUserIdFromReq = () => {
+    if (req.user && (req.user.id || req.user._id))
+      return String(req.user.id || req.user._id);
+    const authHeader =
+      req.headers && (req.headers.authorization || req.headers.Authorization);
+    if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
+    const token = authHeader.split(" ")[1];
+    try {
+      const decoded = jwt.verify(token, env.JWT_SECRET);
+      return decoded && (decoded.id || decoded._id)
+        ? String(decoded.id || decoded._id)
+        : null;
+    } catch (err) {
+      // invalid token or missing secret; ignore and fallback to IP
+      return null;
+    }
+  };
+
+  const userId = getUserIdFromReq();
+
+  // determine role/tier — must happen BEFORE role-based quota check
+  const role =
+    (req.user && req.user.role) ||
+    (userId
+      ? (() => {
+          try {
+            const authHeader =
+              req.headers &&
+              (req.headers.authorization || req.headers.Authorization);
+            if (authHeader && authHeader.startsWith("Bearer ")) {
+              const token = authHeader.split(" ")[1];
+              const decoded = jwt.decode(token) || {};
+              return decoded.role || decoded.tier || "user";
+            }
+          } catch (e) {
+            return "user";
+          }
+          return "user";
+        })()
+      : "ip");
+
   // If role-based quota exists and applies, override limiter or skip limiting
   const roleSpec = roleQuotas.get(role);
   if (roleSpec) {
@@ -158,27 +204,6 @@ export default function rateLimitMiddleware(req, res, next) {
     }
   }
 
-  // derive key from user id or IP below
-  // Prefer authenticated user id when present to have per-user limits
-  const getUserIdFromReq = () => {
-    if (req.user && (req.user.id || req.user._id))
-      return String(req.user.id || req.user._id);
-    const authHeader =
-      req.headers && (req.headers.authorization || req.headers.Authorization);
-    if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
-    const token = authHeader.split(" ")[1];
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      return decoded && (decoded.id || decoded._id)
-        ? String(decoded.id || decoded._id)
-        : null;
-    } catch (err) {
-      // invalid token or missing secret; ignore and fallback to IP
-      return null;
-    }
-  };
-
-  const userId = getUserIdFromReq();
   const ip =
     req.ip ||
     req.headers["x-forwarded-for"] ||
@@ -191,27 +216,6 @@ export default function rateLimitMiddleware(req, res, next) {
   else if (USER_KEY_STRATEGY === "never") useUserKey = false;
   /* auth-only */ else useUserKey = Boolean(userId);
 
-  // determine role/tier
-  const role =
-    (req.user && req.user.role) ||
-    (userId
-      ? (() => {
-          try {
-            const authHeader =
-              req.headers &&
-              (req.headers.authorization || req.headers.Authorization);
-            if (authHeader && authHeader.startsWith("Bearer ")) {
-              const token = authHeader.split(" ")[1];
-              const decoded = jwt.decode(token) || {};
-              return decoded.role || decoded.tier || "user";
-            }
-          } catch (e) {
-            return "user";
-          }
-          return "user";
-        })()
-      : "ip");
-
   const key = useUserKey && userId ? `user:${userId}:${role}` : `ip:${ip}`;
 
   limiter
@@ -221,16 +225,13 @@ export default function rateLimitMiddleware(req, res, next) {
       const limit =
         (custom && custom.spec && custom.spec.points) || DEFAULT_POINTS;
       const remaining =
-        rlRes &&
-        (rlRes.remainingPoints != null
-          ? rlRes.remainingPoints
-          : rlRes.remainingPoints);
+        rlRes && rlRes.remainingPoints != null ? rlRes.remainingPoints : 0;
       const resetEpoch =
         rlRes && rlRes.msBeforeNext
           ? Math.floor((Date.now() + rlRes.msBeforeNext) / 1000)
           : null;
       res.set("X-RateLimit-Limit", String(limit));
-      res.set("X-RateLimit-Remaining", String(Math.max(0, remaining || 0)));
+      res.set("X-RateLimit-Remaining", String(Math.max(0, remaining)));
       if (resetEpoch) res.set("X-RateLimit-Reset", String(resetEpoch));
       return next();
     })

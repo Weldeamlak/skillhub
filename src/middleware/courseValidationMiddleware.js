@@ -15,6 +15,10 @@ export const validateCourse = [
     .optional()
     .isIn(["draft", "published", "archived"])
     .withMessage("Invalid status value."),
+  body("instructor")
+    .optional()
+    .isMongoId()
+    .withMessage("Instructor must be a valid User ID."),
 
   (req, res, next) => {
     const errors = validationResult(req);

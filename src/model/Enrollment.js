@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-const EnrollemetSchema = new mongoose.Schema({
+const EnrollmentSchema = new mongoose.Schema({
    student: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -20,6 +20,10 @@ const EnrollemetSchema = new mongoose.Schema({
    }
 },{
     timestamps:true
-}) 
-const Enrollment = mongoose.model('Enrollment', EnrollemetSchema);
+})
+
+// ✅ Fix #14: DB-level unique constraint prevents race-condition duplicate enrollments
+EnrollmentSchema.index({ student: 1, course: 1 }, { unique: true });
+
+const Enrollment = mongoose.model('Enrollment', EnrollmentSchema);
 export default Enrollment;

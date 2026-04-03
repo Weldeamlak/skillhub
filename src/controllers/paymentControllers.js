@@ -7,10 +7,15 @@ import {
   deletePaymentService,
   initiateChapaTransaction,
   verifyChapaTransaction,
+  getUnpaidPayoutsService,
+  markPaymentPaidService,
 } from "../services/paymentService.js";
 import { logInfo, logError } from "../logs/logger.js";
 import { validationResult } from "express-validator";
+import { buildQueryOptions } from "../utils/queryHelper.js";
+import env from "../config/env.js";
 
+// ✅ Create a payment record manually
 export const createPayment = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty())
@@ -26,16 +31,12 @@ export const createPayment = async (req, res) => {
   }
 };
 
-import {
-  getUnpaidPayoutsService,
-  markPaymentPaidService,
-} from "../services/paymentService.js";
 // Initialize Chapa and return checkout url
 export const initChapa = async (req, res) => {
   try {
     const callbackUrl =
       req.body.callbackUrl ||
-      `${process.env.APP_BASE_URL}/api/payments/chapa-callback`;
+      `${env.APP_BASE_URL}/api/payments/chapa-callback`;
     const result = await initiateChapaTransaction(
       req.body,
       req.user,
@@ -61,10 +62,13 @@ export const chapaVerify = async (req, res) => {
   }
 };
 
+
+
 export const getAllPayments = async (req, res) => {
   try {
-    const payments = await getAllPaymentsService();
-    res.status(200).json(payments);
+    const { filter, options } = buildQueryOptions(req.query, ["user", "status", "type"]);
+    const result = await getAllPaymentsService({ filter, options });
+    res.status(200).json(result);
   } catch (error) {
     logError(error.message);
     res.status(500).json({ message: error.message });

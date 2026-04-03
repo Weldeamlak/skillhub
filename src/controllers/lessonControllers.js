@@ -4,6 +4,7 @@ import {
   getLessonByIdService,
   updateLessonService,
   deleteLessonService,
+  uploadLessonVideoService,
 } from "../services/lessonService.js";
 import { logInfo, logError } from "../logs/logger.js";
 import { buildQueryOptions } from "../utils/queryHelper.js";
@@ -38,7 +39,7 @@ export const getAllLessons = async (req, res) => {
 // ✅ Get one lesson
 export const getLessonById = async (req, res) => {
   try {
-    const lesson = await getLessonByIdService(req.params.id);
+    const lesson = await getLessonByIdService(req.params.id, req.user);
     if (!lesson) return res.status(404).json({ message: "Lesson not found" });
 
     res.status(200).json(lesson);
@@ -72,3 +73,13 @@ export const deleteLesson = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+export const uploadLessonVideo = async (req, res) => {
+  try {
+    const lesson = await uploadLessonVideoService(req.params.id, req.file, req.user);
+    res.status(200).json({ message: "Lesson video uploaded successfully", lesson });
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+

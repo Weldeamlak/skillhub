@@ -1,34 +1,57 @@
-import dotenv from 'dotenv';
 import { createClient } from 'redis';
-
-dotenv.config();
+import env from './env.js';
 
 // Only create/connect to Redis when REDIS_URL is explicitly set.
-const redisUrl = process.env.REDIS_URL || null;
+const redisUrl = env.REDIS_URL || null;
 
 export let redisClient = null;
 
 if (redisUrl) {
-  redisClient = createClient({ url: redisUrl });
+  redisClient = createClient({
+    url: redisUrl,
+    socket: {
+      // ✅ Fail fast on startup if Redis is down so MongoDB can connect
+      reconnectStrategy: (retries) => {
+        if (retries > 0) {
+          return new Error('Redis connection failed');
+        }
+        return 500; // retry once after 500ms
+      },
+    },
+  });
 
   redisClient.on('error', (err) => {
-    console.error('Redis Client Error', err);
+    if (err.code === 'ECONNREFUSED') {
+      if (!global.redisConnRefusedLogged) {
+        console.warn('[REDIS] Connection refused. Rate limiting will fallback to in-memory storage.');
+        global.redisConnRefusedLogged = true;
+      }
+    } else {
+      console.error('Redis Client Error:', err);
+    }
   });
 }
 
+export let isRedisAvailable = false;
+
 export async function connectRedis() {
   if (!redisClient) {
-    console.log('REDIS_URL not set — skipping Redis connection');
-    return;
+    console.log('[REDIS] REDIS_URL not set — skipping connection');
+    return false;
   }
 
   try {
     if (!redisClient.isOpen) {
       await redisClient.connect();
-      console.log('Connected to Redis');
+      console.log('[REDIS] Connected successfully');
+      isRedisAvailable = true;
+      return true;
     }
+    return true;
   } catch (err) {
-    console.error('Failed to connect to Redis:', err.message || err);
+    console.warn('[REDIS] Offline — background jobs and caching disabled.');
+    isRedisAvailable = false;
+    return false;
   }
 }
 

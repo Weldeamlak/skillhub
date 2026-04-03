@@ -6,9 +6,11 @@ import {
   getCourseById,
   updateCourse,
   deleteCourse,
+  uploadCourseThumbnail,
 } from "../controllers/courseControllers.js";
 import { protect, authorizeRoles } from "../middleware/authMiddleware.js";
-import { validateCourse } from "../middleware/validationMiddleware.js";
+import { validateCourse } from "../middleware/courseValidationMiddleware.js";
+import { upload } from "../middleware/uploadMiddleware.js";
 
 const router = express.Router();
 
@@ -34,6 +36,15 @@ router.put(
   authorizeRoles("instructor", "admin"),
   validateCourse,
   updateCourse
+);
+
+// ✅ Upload course thumbnail
+router.patch(
+  "/:id/thumbnail",
+  protect,
+  authorizeRoles("instructor", "admin"),
+  upload.single("thumbnail"),
+  uploadCourseThumbnail
 );
 
 // Admin - Delete a course

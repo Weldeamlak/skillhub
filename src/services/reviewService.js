@@ -1,6 +1,6 @@
 import Review from "../model/Review.js";
 import Course from "../model/Course.js";
-import Enrollment from "../model/Enrollement.js";
+import Enrollment from "../model/Enrollment.js";
 import { logInfo, logError } from "../logs/logger.js";
 
 const recalcCourseRating = async (courseId) => {
