@@ -36,7 +36,7 @@ export const initChapa = async (req, res) => {
   try {
     const callbackUrl =
       req.body.callbackUrl ||
-      `${env.APP_BASE_URL}/api/payments/chapa-callback`;
+      `${env.APP_BASE_URL}/api/v1/payments/chapa/verify`;
     const result = await initiateChapaTransaction(
       req.body,
       req.user,
@@ -53,11 +53,23 @@ export const initChapa = async (req, res) => {
 export const chapaVerify = async (req, res) => {
   try {
     const tx_ref = req.query.tx_ref || req.body.tx_ref;
-    if (!tx_ref) return res.status(400).json({ message: "tx_ref is required" });
+    if (!tx_ref) {
+      logError("Chapa verification attempted without tx_ref");
+      return res.status(400).json({ message: "tx_ref is required" });
+    }
+    
     const result = await verifyChapaTransaction(tx_ref);
+    
+    // Log context (Webhook vs User Redirect)
+    if (req.body.tx_ref) {
+      logInfo(`Chapa Webhook received and processed for ${tx_ref}`);
+    } else {
+      logInfo(`Chapa manual verification (redirect) processed for ${tx_ref}`);
+    }
+
     res.status(200).json(result);
   } catch (error) {
-    logError(error.message);
+    logError(`Chapa verification failed for tx_ref: ${error.message}`);
     res.status(400).json({ message: error.message });
   }
 };

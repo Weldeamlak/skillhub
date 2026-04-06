@@ -4,7 +4,7 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import env from "../config/env.js";
 import { generateAccessToken, generateRefreshToken } from "../utils/generateToken.js";
-import sendEmail from "../utils/sendEmail.js";
+import { addEmailJob } from "../config/queue.js";
 
 export const registerService = async ({ username, email, password, role }) => {
   const existing = await User.findOne({ email });
@@ -18,31 +18,16 @@ export const registerService = async ({ username, email, password, role }) => {
   const verificationToken = user.createEmailVerificationToken();
   await user.save();
 
-  const verificationURL = `${env.APP_BASE_URL}/verify-email/${verificationToken}`; // Adjust frontend URL as needed
-  const message = `Welcome to SkillHub! Please verify your email address by submitting a PATCH request to: \n${verificationURL}`;
+  const verificationURL = `${env.APP_BASE_URL}/api/v1/auth/verify-email/${verificationToken}`;
 
-  // --- TEMP BYPASS FOR LOCAL TESTING (OPTION B) ---
-  // We are skipping the actual email send and returning the token directly.
-  return { 
-    message: "Registration successful. Email sending bypassed for testing. Use this token below for the verify-email endpoint.", 
-    verificationToken: verificationToken 
-  };
-  
-  /*
-  try {
-    await sendEmail({
-      email: user.email,
-      subject: "Verify your email address",
-      message,
-    });
-    return { message: "Registration successful. Please check your email to verify your account." };
-  } catch (error) {
-    user.emailVerificationToken = undefined;
-    user.emailVerificationExpires = undefined;
-    await user.save({ validateBeforeSave: false });
-    throw new Error("There was an error sending the verification email. Try again later!");
-  }
-  */
+  // Add background email job
+  await addEmailJob("verifyEmail", {
+    to: user.email,
+    username: user.username,
+    verificationUrl: verificationURL,
+  });
+
+  return { message: "Registration successful. Please check your email to verify your account." };
 };
 
 export const loginService = async ({ email, password }) => {
@@ -100,35 +85,16 @@ export const forgotPasswordService = async (email) => {
   await user.save({ validateBeforeSave: false });
 
   // 3. Send it to user's email
-  const resetURL = `${env.APP_BASE_URL}/reset-password/${resetToken}`; // Adjust frontend URL as needed
+  const resetURL = `${env.APP_BASE_URL}/api/v1/auth/reset-password/${resetToken}`;
 
-  const message = `Forgot your password? Submit a PATCH request with your new password to: \n${resetURL}.\nIf you didn't forget your password, please ignore this email!`;
+  // Add background email job
+  await addEmailJob("forgotPassword", {
+    to: user.email,
+    username: user.username,
+    resetUrl: resetURL,
+  });
 
-  // --- TEMP BYPASS FOR LOCAL TESTING (OPTION B) ---
-  // We are skipping the actual email send and returning the token to you directly.
-  // In production, uncomment the try/catch block below and remove the return statement here.
-  
-  return { 
-    message: "Email sending bypassed for testing. Use this token below for the reset endpoint.", 
-    resetToken: resetToken 
-  };
-
-  /*
-  try {
-    await sendEmail({
-      email: user.email,
-      subject: "Your password reset token (valid for 10 min)",
-      message,
-    });
-    return { message: "Token sent to email!" };
-  } catch (error) {
-    user.passwordResetToken = undefined;
-    user.passwordResetExpires = undefined;
-    await user.save({ validateBeforeSave: false });
-
-    throw new Error("There was an error sending the email. Try again later!");
-  }
-  */
+  return { message: "Token sent to email!" };
 };
 
 export const resetPasswordService = async (token, newPassword) => {

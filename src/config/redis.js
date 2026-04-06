@@ -55,4 +55,8 @@ export async function connectRedis() {
   }
 }
 
+export const isRedisReady = () => {
+  return redisClient && redisClient.isOpen && isRedisAvailable;
+};
+
 export default redisClient;

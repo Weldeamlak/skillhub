@@ -2,6 +2,7 @@ import Review from "../model/Review.js";
 import Course from "../model/Course.js";
 import Enrollment from "../model/Enrollment.js";
 import { logInfo, logError } from "../logs/logger.js";
+import { addEmailJob } from "../config/queue.js";
 
 const recalcCourseRating = async (courseId) => {
   const reviews = await Review.find({ course: courseId });
@@ -35,6 +36,20 @@ export const createReviewService = async (reviewData, user) => {
     const saved = await newReview.save();
 
     await recalcCourseRating(course);
+    
+    // Notify Instructor
+    const courseDoc = await Course.findById(course).populate("instructor");
+    if (courseDoc?.instructor) {
+      await addEmailJob("newReview", {
+        to: courseDoc.instructor.email,
+        username: courseDoc.instructor.username, // instructor's name
+        courseTitle: courseDoc.title,
+        reviewerName: user.username,
+        rating: saved.rating,
+        comment: saved.comment
+      });
+    }
+
     logInfo(`Review created: ${saved._id}`);
     return saved;
   } catch (error) {

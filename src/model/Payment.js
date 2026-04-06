@@ -28,5 +28,11 @@ const paymentSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Critical for webhook speed: tx_ref lookup
+paymentSchema.index({ tx_ref: 1 }, { unique: true });
+// Optimize user purchase history and admin filters
+paymentSchema.index({ user: 1 });
+paymentSchema.index({ status: 1, createdAt: -1 });
+
 const Payment = mongoose.model("Payment", paymentSchema);
 export default Payment;

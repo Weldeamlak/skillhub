@@ -2,28 +2,18 @@ import Course from "../model/Course.js";
 import Lesson from "../model/Lesson.js";
 import User from "../model/User.js";
 import { logInfo, logError } from "../logs/logger.js";
-import { redisClient } from "../config/redis.js";
 import { uploadToCloud } from "./storageService.js";
-
-// ✅ Fix #13 (SRP): All lesson functions removed from here — they live in lessonService.js.
-// courseService.js is now exclusively about Course CRUD.
+import { getCache, setCache, delCachePattern, delCache } from "./cacheService.js";
 
 const CACHE_TTL = 900; // 15 minutes
 
 /**
- * Utility to clear all course-related caches
+ * Utility to clear course-related caches
  */
-const clearCourseCache = async () => {
-  try {
-    if (redisClient && redisClient.isOpen) {
-      const keys = await redisClient.keys('courses:*');
-      if (keys.length > 0) {
-        await redisClient.del(keys);
-        logInfo(`Cleared ${keys.length} course cache keys`);
-      }
-    }
-  } catch (err) {
-    logError(`Cache clearing failed: ${err.message}`);
+const clearCourseCache = async (courseId = null) => {
+  await delCachePattern('courses:list:*');
+  if (courseId) {
+    await delCache(`courses:id:${courseId}`);
   }
 };
 
@@ -85,16 +75,10 @@ export const getCoursesService = async ({
     // ✅ Fix #19: Always exclude soft-deleted courses from listings
     const baseFilter = { isDeleted: false, ...filter };
 
-    // Redis Caching Logic
-    const cacheKey = `courses:${JSON.stringify(baseFilter)}:${JSON.stringify(options)}`;
-    try {
-      if (redisClient && redisClient.isOpen) {
-        const cached = await redisClient.get(cacheKey);
-        if (cached) return JSON.parse(cached);
-      }
-    } catch (err) {
-      logError(`Cache read failed: ${err.message}`);
-    }
+    // ✅ Cache Logic: Use abstracted cache service
+    const cacheKey = `courses:list:${JSON.stringify(baseFilter)}:${JSON.stringify(options)}`;
+    const cached = await getCache(cacheKey);
+    if (cached) return cached;
 
     const query = Course.find(baseFilter)
       .populate("instructor", "username email role")
@@ -121,14 +105,8 @@ export const getCoursesService = async ({
       };
     }
 
-    // Save to Cache
-    try {
-      if (redisClient && redisClient.isOpen) {
-        await redisClient.set(cacheKey, JSON.stringify(result), { EX: CACHE_TTL });
-      }
-    } catch (err) {
-      logError(`Cache write failed: ${err.message}`);
-    }
+    // Save to Cache (Async, no await needed)
+    setCache(cacheKey, result, CACHE_TTL);
 
     return result;
   } catch (error) {
@@ -137,13 +115,20 @@ export const getCoursesService = async ({
   }
 };
 
-// ✅ Get course by id — also block soft-deleted (fix #19)
+// ✅ Get course by id — cached
 export const getCourseByIdService = async (id) => {
   try {
+    const cacheKey = `courses:id:${id}`;
+    const cached = await getCache(cacheKey);
+    if (cached) return cached;
+
     const course = await Course.findOne({ _id: id, isDeleted: false })
       .populate("instructor", "username email role")
       .populate("lessons");
+    
     if (!course) throw new Error("Course not found");
+    
+    setCache(cacheKey, course.toObject(), CACHE_TTL);
     return course;
   } catch (error) {
     logError(`Error fetching course by id: ${error.message}`);
@@ -168,7 +153,7 @@ export const updateCourseService = async (id, updateData, user) => {
     Object.assign(course, updateData);
     const updatedCourse = await course.save();
 
-    await clearCourseCache(); // Invalidate caches
+    await clearCourseCache(id); // Target invalidation
 
     logInfo(`Course updated: ${updatedCourse.title}`);
     return updatedCourse;

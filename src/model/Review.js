@@ -27,6 +27,8 @@ const ReviewSchema = new mongoose.Schema(
 
 // ✅ Fix #15: DB-level unique constraint — one review per student per course
 ReviewSchema.index({ student: 1, course: 1 }, { unique: true });
+// Optimize loading most recent reviews for a course
+ReviewSchema.index({ course: 1, createdAt: -1 });
 
 const Review = mongoose.model("Review", ReviewSchema);
 export default Review;

@@ -1,6 +1,8 @@
 import Course from "../model/Course.js";
 import Lesson from "../model/Lesson.js";
+import Enrollment from "../model/Enrollment.js";
 import { logInfo, logError } from "../logs/logger.js";
+import { addEmailJob } from "../config/queue.js";
 import { getSignedUrl, uploadToCloud } from "./storageService.js";
 
 // ✅ Create a new lesson
@@ -27,7 +29,22 @@ export const createLesson = async (lessonData) => {
     existingCourse.lessons.push(savedLesson._id);
     await existingCourse.save();
 
-    logInfo(`Lesson created with ID: ${savedLesson._id}`);
+    // Notify all enrolled students
+    const enrollments = await Enrollment.find({ course }).populate("student", "username email");
+    
+    // Fire-and-forget background jobs for each student
+    enrollments.forEach(enroll => {
+      if (enroll.student) {
+        addEmailJob("newLesson", {
+          to: enroll.student.email,
+          username: enroll.student.username,
+          courseTitle: existingCourse.title,
+          lessonTitle: savedLesson.title
+        });
+      }
+    });
+
+    logInfo(`Lesson created with ID: ${savedLesson._id} — Notifications queued for ${enrollments.length} students`);
     return savedLesson;
   } catch (error) {
     logError(`Error creating lesson: ${error.message}`);

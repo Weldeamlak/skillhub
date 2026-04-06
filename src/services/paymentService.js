@@ -1,9 +1,12 @@
 import Payment from "../model/Payment.js";
 import Course from "../model/Course.js";
 import Enrollment from "../model/Enrollment.js";
+import User from "../model/User.js";
 import mongoose from "mongoose";
 import { logInfo, logError } from "../logs/logger.js";
-import { validatePromoCodeService } from "./promotionService.js"; // ✅ Fix #18: Added promo validation
+import { validatePromoCodeService } from "./promotionService.js";
+import { initializeCourseProgress } from "./progressService.js";
+import { addEmailJob } from "../config/queue.js";
 import env from "../config/env.js";
 
 const CHAPA_BASE = env.CHAPA_BASE_URL || "https://api.chapa.co";
@@ -182,12 +185,9 @@ export const verifyChapaTransaction = async (tx_ref) => {
 
             // credit instructor earnings only once
             if (!paymentDoc.payoutCredited) {
-              const courseDoc = await Course.findById(
-                paymentDoc.course
-              ).session(session);
+              const courseDoc = await Course.findById(paymentDoc.course).session(session);
               const instructorId = courseDoc?.instructor;
               if (instructorId) {
-                const User = (await import("../model/User.js")).default;
                 await User.findByIdAndUpdate(
                   instructorId,
                   { $inc: { earnings: instructorShare } },
@@ -205,8 +205,37 @@ export const verifyChapaTransaction = async (tx_ref) => {
         session.endSession();
       }
 
-      // reload updated payment to return latest fields
-      payment = await Payment.findOne({ tx_ref });
+      // ──────────────────────────────────────────
+      // Post-Transaction Automation (Outside session)
+      // ──────────────────────────────────────────
+      payment = await Payment.findOne({ tx_ref }).populate("user course");
+      
+      if (payment.course) {
+        // 1. Initialize learning path (Lesson 1 unlock)
+        await initializeCourseProgress(payment.user._id, payment.course._id);
+
+        // 2. Fetch instructor details for notification
+        const courseWithInstructor = await Course.findById(payment.course._id).populate("instructor");
+        const instructor = courseWithInstructor?.instructor;
+
+        // 3. Queue Emails
+        // To Student: Welcome & Enrollment
+        await addEmailJob("welcome", {
+          to: payment.user.email,
+          username: payment.user.username,
+          courseTitle: payment.course.title,
+        });
+
+        // To Instructor: New Sale
+        if (instructor) {
+          await addEmailJob("newSale", {
+            to: instructor.email,
+            username: instructor.username, // Instructor's name
+            courseTitle: payment.course.title,
+            amount: payment.instructorShare,
+          });
+        }
+      }
     } else {
       payment.status = chapaStatus || "failed";
       await payment.save();

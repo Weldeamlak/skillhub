@@ -15,6 +15,13 @@ export const initializeCourseProgress = async (userId, courseId) => {
     const lessons = await Lesson.find({ course: courseId }).sort({ order: 1 });
     if (lessons.length === 0) return;
 
+    // Check if progress already exists to ensure idempotency
+    const existing = await Progress.findOne({ user: userId, course: courseId });
+    if (existing) {
+      logInfo(`Progress already exists for user ${userId} in course ${courseId} — skipping initialization`);
+      return;
+    }
+
     // Create progress records for all lessons
     const progressRecords = lessons.map((lesson, index) => ({
       user: userId,

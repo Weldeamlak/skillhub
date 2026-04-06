@@ -1,5 +1,15 @@
 import { Worker } from 'bullmq';
-import { sendEmail, getWelcomeTemplate, getQuizPassTemplate, getCourseCompleteTemplate } from './notificationService.js';
+import { 
+  sendEmail, 
+  getWelcomeTemplate, 
+  getQuizPassTemplate, 
+  getCourseCompleteTemplate,
+  getNewSaleTemplate,
+  getVerifyEmailTemplate,
+  getForgotPasswordTemplate,
+  getNewReviewTemplate,
+  getNewLessonTemplate
+} from './notificationService.js';
 import env from '../config/env.js';
 import { logInfo, logError } from '../logs/logger.js';
 import { isRedisAvailable } from '../config/redis.js';
@@ -45,6 +55,32 @@ export const startWorker = () => {
           case 'courseComplete':
             subject = `Course Completed! - ${courseTitle}`;
             html = getCourseCompleteTemplate(username, courseTitle);
+            break;
+          
+          case 'newSale':
+            subject = `New Sale! Congratulations - ${courseTitle}`;
+            // For newSale, the 'username' provided in the data will be the instructor's name
+            html = getNewSaleTemplate(username, courseTitle, data.amount);
+            break;
+
+          case 'verifyEmail':
+            subject = "Verify your SkillHub Account";
+            html = getVerifyEmailTemplate(username, data.verificationUrl);
+            break;
+
+          case 'forgotPassword':
+            subject = "SkillHub - Password Reset Request";
+            html = getForgotPasswordTemplate(username, data.resetUrl);
+            break;
+
+          case 'newReview':
+            subject = `New Review for ${courseTitle}`;
+            html = getNewReviewTemplate(username, courseTitle, data.reviewerName, data.rating, data.comment);
+            break;
+
+          case 'newLesson':
+            subject = `New Content in ${courseTitle}`;
+            html = getNewLessonTemplate(username, courseTitle, data.lessonTitle);
             break;
 
           default:
